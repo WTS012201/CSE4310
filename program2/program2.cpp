@@ -9,22 +9,35 @@ static std::map<std::string, int> change({
     {"Quarter", 0},
 });
 
-double value(cv::Size size){
+double value(cv::RotatedRect& fittedEllipse, cv::Mat& imageEllipse){
+    cv::Size size = fittedEllipse.size;
     double approxDiam = (size.width + size.height) / 2;
+    double value = 0;
+    cv::Scalar color;
+    
     if(approxDiam > 310 && approxDiam < 320){
         change["Penny"]++;
-        return 0.01;
+        color = cv::Scalar(0, 0, 255);
+        value = 0.01;
     } else if(approxDiam > 345 && approxDiam < 370){
         change["Nickel"]++;
-        return 0.05;
+        color = cv::Scalar(0, 255, 255);
+        value = 0.05;
     } else if(approxDiam > 290 && approxDiam < 300){
         change["Dime"]++;
-        return 0.10;
+        color = cv::Scalar(255, 0, 0);
+        value = 0.10;
     } else if(approxDiam > 390 && approxDiam < 415){
         change["Quarter"]++;
-        return 0.25;
+        color = cv::Scalar(0, 255, 0);
+        value = 0.25;
+    } else{
+        return value;
     }
-    return 0.0;
+
+    cv::ellipse(imageEllipse, fittedEllipse, color, 5);
+
+    return value;
 } 
 
 int main(int argc, char **argv){
@@ -58,7 +71,6 @@ int main(int argc, char **argv){
     std::vector<std::vector<cv::Point> > contours;
     cv::findContours(edgesMorphed, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
 
-    cv::RNG rand(12345);
     std::vector<cv::RotatedRect> fittedEllipses(contours.size());
     for(int i = 0; i < contours.size(); i++){
         if(contours.at(i).size() > 5){
@@ -74,9 +86,7 @@ int main(int argc, char **argv){
         if(contours.at(i).size() > minEllipseInliers){
             if(fittedEllipses[i].size.aspectRatio() < 0.95)
                 continue;
-            cv::Scalar color = cv::Scalar(rand.uniform(0, 256), rand.uniform(0,256), rand.uniform(0,256));
-            cv::ellipse(imageEllipse, fittedEllipses[i], color, 5);
-            total += value(fittedEllipses[i].size);
+            total += value(fittedEllipses[i], imageEllipse);
         }
     }
     cv::namedWindow("imageIn", cv::WINDOW_GUI_NORMAL);
