@@ -97,8 +97,10 @@ int main(int argc, char **argv){
     cv::imshow("imageEllipse", imageEllipse);
     cv::waitKey();
 
-    for(auto it = change.begin(); it != change.end(); ++it) {
-        std::cout << it->first << " - " << it->second << std::endl;
-    }
-    std::cout << "Total - " << total << std::endl;
+    
+    std::cout << "Penny - " << change["Penny"] << std::endl;
+    std::cout << "Nickel - " << change["Nickel"] << std::endl;
+    std::cout << "Dime - " << change["Dime"] << std::endl;
+    std::cout << "Quarter - " << change["Quarter"] << std::endl;
+    std::cout << "Total - $" << total << std::endl;
 }
