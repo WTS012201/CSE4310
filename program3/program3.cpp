@@ -90,36 +90,27 @@ int main(int argc, char **argv){
     }
     cv::namedWindow(DISPLAY_WINDOW_NAME, cv::WINDOW_NORMAL);
 
-    const float bgThreshold = 125;
     const int captureWidth = static_cast<int>(capture.get(cv::CAP_PROP_FRAME_WIDTH));
     const int captureHeight = static_cast<int>(capture.get(cv::CAP_PROP_FRAME_HEIGHT));
     const int captureFPS = static_cast<int>(capture.get(cv::CAP_PROP_FPS));
-    const int rangeMin = 0;
-    const int rangeMax = 255;
-    const int bgHistory = 250;
-    int frameCount = 0;
-    bool doCapture = true;
 
-    cv::Ptr<cv::BackgroundSubtractor> pMOG2 = cv::createBackgroundSubtractorMOG2(bgHistory, bgThreshold, false);
+    cv::Ptr<cv::BackgroundSubtractor> pMOG2 = cv::createBackgroundSubtractorMOG2(250, 125, false);
     cv::Mat fgMask;
-    //  ROIs for lanes
-    std::vector<cv::Rect> lanesWest;
-    std::vector<cv::Rect> lanesEast;
-    lanesWest.push_back(cv::Rect(cv::Point(0, 0), cv::Point(captureWidth, WEST_LANE1 - THIN)));
-    lanesWest.push_back(cv::Rect(cv::Point(0, WEST_LANE1 + THIN), cv::Point(captureWidth, WEST_LANE2 - THIN)));
-    lanesWest.push_back(cv::Rect(cv::Point(0, WEST_LANE2 + THIN), cv::Point(captureWidth, WEST_LANE3 - THIN)));
-    lanesEast.push_back(cv::Rect(cv::Point(0, WEST_LANE3 + THIN), cv::Point(captureWidth, EAST_LANE1 - THIN)));
-    lanesEast.push_back(cv::Rect(cv::Point(0, EAST_LANE1 + THIN), cv::Point(captureWidth, EAST_LANE2 - THIN)));
-    lanesEast.push_back(cv::Rect(cv::Point(0, EAST_LANE2 + THIN), cv::Point(captureWidth, captureHeight - THIN)));
+    std::vector<cv::Rect> lanes({   //  ROIs for lanes
+        cv::Rect(cv::Point(0, 0), cv::Point(captureWidth, WEST_LANE1 - THIN)),
+        cv::Rect(cv::Point(0, WEST_LANE1 + THIN), cv::Point(captureWidth, WEST_LANE2 - THIN)),
+        cv::Rect(cv::Point(0, WEST_LANE2 + THIN), cv::Point(captureWidth, WEST_LANE3 - THIN)),
+        cv::Rect(cv::Point(0, WEST_LANE3 + THIN), cv::Point(captureWidth, EAST_LANE1 - THIN)),
+        cv::Rect(cv::Point(0, EAST_LANE1 + THIN), cv::Point(captureWidth, EAST_LANE2 - THIN)),
+        cv::Rect(cv::Point(0, EAST_LANE2 + THIN), cv::Point(captureWidth, captureHeight - THIN))
+    });
 
-    for(const auto& lane : lanesWest){
-        isMiddle[lane.br().y] = false;
-    }
-    for(const auto& lane : lanesEast){
+    for(const auto& lane : lanes){
         isMiddle[lane.br().y] = false;
     }
     
-    int iter = 0;
+    int frameCount = 0;
+    bool doCapture = true;
     while(doCapture){
         double startTicks = static_cast<double>(cv::getTickCount());
         cv::Mat captureFrame;
@@ -129,18 +120,11 @@ int main(int argc, char **argv){
         bool captureSuccess = capture.read(captureFrame);
         if(captureSuccess){
             cv::cvtColor(captureFrame, grayFrame, cv::COLOR_BGR2GRAY);
-            cv::normalize(grayFrame, grayFrame, rangeMin, rangeMax, cv::NORM_MINMAX, CV_8UC1);
+            cv::normalize(grayFrame, grayFrame, 0, 255, cv::NORM_MINMAX, CV_8UC1);
             pMOG2->apply(grayFrame, fgMask);
             //  Capture some frames for background subtractor before counting
-            if(iter < 15){
-                iter++;
-            } else{
-                for(const auto& lane : lanesWest){
-                    threads.push_back(std::thread([&](){
-                        monitorLane(captureFrame, fgMask(lane), lane);
-                    }));
-                }
-                for(const auto& lane : lanesEast){
+            if(frameCount > 15){
+                for(const auto& lane : lanes){
                     threads.push_back(std::thread([&](){
                         monitorLane(captureFrame, fgMask(lane), lane);
                     }));
@@ -154,15 +138,15 @@ int main(int argc, char **argv){
         else{
             break;
         }
-
         if(captureSuccess){
             cv::imshow(DISPLAY_WINDOW_NAME, captureFrame);
             if(((char) cv::waitKey(1)) == 'q'){
                 doCapture = false;
             }
         }
-        std::cout << "WESTBOUND COUNT: " << westbound_count << "\n\n";
-        std::cout << "EASTBOUND COUNT: " << eastbound_count << std::endl;
+
+        std::cout << "WESTBOUND COUNT: " << westbound_count << "\n";
+        std::cout << "EASTBOUND COUNT: " << eastbound_count << "\n\n";
     }
     capture.release();
 }
