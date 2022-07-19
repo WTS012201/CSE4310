@@ -9,11 +9,10 @@
 #define DISPLAY_WINDOW_NAME "Video Frame"
 
 #define WEST_LANE1 100
-#define WEST_LANE2 245
+#define WEST_LANE2 270
 #define WEST_LANE3 410
 #define EAST_LANE1 630
-#define EAST_LANE2 865
-
+#define EAST_LANE2 885
 
 static int westbound_count = 0;
 static int eastbound_count = 0;
@@ -23,7 +22,7 @@ static std::mutex mu;
 void monitorLane(cv::Mat& processedFrame, cv::Mat lane, cv::Rect rect, bool dirWest){
     std::vector<std::vector<cv::Point> > contours;
     cv::findContours(lane, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-            
+
     std::vector<cv::Rect> fittedRects(contours.size());
     for(int i = 0; i < contours.size(); i++){
         if(contours.at(i).size() > 25){
@@ -71,8 +70,8 @@ int main(int argc, char **argv){
 
     bool doCapture = true;
     int frameCount = 0;
-    const int bgHistory = 200;
-    const float bgThreshold = 50;
+    const int bgHistory = 150;
+    const float bgThreshold = 75;
 
     cv::Ptr<cv::BackgroundSubtractor> pMOG2 = cv::createBackgroundSubtractorMOG2(bgHistory, bgThreshold, false);
     cv::Mat fgMask;
@@ -100,17 +99,23 @@ int main(int argc, char **argv){
             const int rangeMax = 255;
 
             cv::cvtColor(captureFrame, grayFrame, cv::COLOR_BGR2GRAY);
+            // int delayMs = (1.0 / captureFPS) * 1000;
+            // std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));, cv::COLOR_BGR2GRAY);
             cv::normalize(grayFrame, grayFrame, rangeMin, rangeMax, cv::NORM_MINMAX, CV_8UC1);
             pMOG2->apply(grayFrame, fgMask);
-            cv::dilate(fgMask, fgMask, cv::Mat(), cv::Point(-1, -1), 10);
-            cv::erode(fgMask, fgMask, cv::Mat(), cv::Point(-1, -1), 10);
+            cv::dilate(fgMask, fgMask, cv::Mat(), cv::Point(-1, -1), 50);
+            cv::erode(fgMask, fgMask, cv::Mat(), cv::Point(-1, -1), 50);
 
             for(const auto& lane : lanesWest){
+                int y = lane.br().y;
+                cv::line(fgMask, cv::Point(0, y), cv::Point(captureWidth, y), cv::Scalar(0), 2);
                 threads.push_back(std::thread([&](){
                     monitorLane(captureFrame, fgMask(lane), lane, true);
                 }));
             }
             for(const auto& lane : lanesEast){
+                int y = lane.br().y;
+                cv::line(fgMask, cv::Point(0, y), cv::Point(captureWidth, y), cv::Scalar(0), 2);
                 threads.push_back(std::thread([&](){
                     monitorLane(captureFrame, fgMask(lane), lane, false);
                 }));
