@@ -8,12 +8,18 @@
 #define NUM_COMNMAND_LINE_ARGUMENTS 1
 #define DISPLAY_WINDOW_NAME "Video Frame"
 
-#define WEST_LANE1 80
+#define WEST_LANE1 75
 #define WEST_LANE2 275
 #define WEST_LANE3 415
 #define EAST_LANE1 650
 #define EAST_LANE2 890
-#define THIN 30
+
+#define ZONE1 500
+#define ZONE2 1420
+
+#define THIN 40
+#define THRESH_HEIGHT 0.4
+#define MIN_AREA 8000
 
 static int westbound_count = 0;
 static int eastbound_count = 0;
@@ -23,19 +29,25 @@ static cv::Mat kernel(16, 16, CV_8U);
 
 //  count cars and draw rects
 void monitorLane(cv::Mat& processedFrame, cv::Mat lane, cv::Rect rectLane, bool dirWest){
-    cv::dilate(lane, lane, kernel, cv::Point(-1, -1), 10);
-    cv::erode(lane, lane, kernel, cv::Point(-1, -1), 5);
+
+    cv::dilate(lane, lane, kernel, cv::Point(-1, -1), 8);
+    cv::erode(lane, lane, kernel, cv::Point(-1, -1), 2);
 
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(lane, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
 
     std::vector<cv::Rect> fittedRects(contours.size());
     for(int i = 0; i < contours.size(); i++){
         if(contours.at(i).size() > 1){
             fittedRects[i] = cv::boundingRect(contours[i]);
-            if(fittedRects[i].size().height < 0.5*rectLane.height){
+            if(fittedRects[i].size().height < THRESH_HEIGHT*rectLane.height){
                 continue;
             }
+            if(fittedRects[i].area() < MIN_AREA){
+                continue;
+            }
+            fittedRects[i].area();
             fittedRects[i].height = rectLane.height + 2*THIN;
             fittedRects[i].y = rectLane.tl().y - THIN;
             mu.try_lock();
@@ -77,14 +89,14 @@ int main(int argc, char **argv){
     bool doCapture = true;
     int frameCount = 0;
     const int bgHistory = 250;
-    const float bgThreshold = 150;
+    const float bgThreshold = 125;
 
     cv::Ptr<cv::BackgroundSubtractor> pMOG2 = cv::createBackgroundSubtractorMOG2(bgHistory, bgThreshold, false);
     cv::Mat fgMask;
     std::vector<cv::Rect> lanesWest;
     std::vector<cv::Rect> lanesEast;
 
-    lanesWest.push_back(cv::Rect(cv::Point(0, 0), cv::Point(captureWidth, WEST_LANE1 - 2*THIN)));
+    lanesWest.push_back(cv::Rect(cv::Point(0, 0), cv::Point(captureWidth, WEST_LANE1 - THIN)));
     lanesWest.push_back(cv::Rect(cv::Point(0, WEST_LANE1 + THIN), cv::Point(captureWidth, WEST_LANE2 - THIN)));
     lanesWest.push_back(cv::Rect(cv::Point(0, WEST_LANE2 + THIN), cv::Point(captureWidth, WEST_LANE3 - THIN)));
     lanesEast.push_back(cv::Rect(cv::Point(0, WEST_LANE3 + THIN), cv::Point(captureWidth, EAST_LANE1 - THIN)));
@@ -130,9 +142,6 @@ int main(int argc, char **argv){
         if(captureSuccess){
             cv::imshow(DISPLAY_WINDOW_NAME, captureFrame);
 			cv::imshow("fgMask", fgMask);
-            
-            int delayMs = (1.0 / captureFPS) * 1000;
-            std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
             if(((char) cv::waitKey(1)) == 'q'){
                 doCapture = false;
             }
