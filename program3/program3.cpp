@@ -35,7 +35,7 @@ void monitorLane(cv::Mat& processedFrame, cv::Mat lane, cv::Rect rectLane){
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(lane, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
     std::vector<cv::Rect> fittedRects;
-
+    //  filter and draw rectangles
     for(int i = 0; i < contours.size(); i++){
         if(contours.at(i).size() > 1){
             auto fittedRect = cv::boundingRect(contours[i]);
@@ -61,11 +61,11 @@ void monitorLane(cv::Mat& processedFrame, cv::Mat lane, cv::Rect rectLane){
             mu.unlock();
         }
     }
-
+    //  check if a car collides with middle and count
     for(const auto& rect : fittedRects){
         if(rect.tl().x <= MIDDLE && rect.br().x >= MIDDLE){
             if(!isMiddle[rectLane.br().y]){
-                eastbound_count++;
+                dirWest ? westbound_count++ : eastbound_count++;
                 isMiddle[rectLane.br().y] = true;
             }
             return;
@@ -76,7 +76,6 @@ void monitorLane(cv::Mat& processedFrame, cv::Mat lane, cv::Rect rectLane){
 
 int main(int argc, char **argv){
     std::string fileName;
-
     if(argc != NUM_COMNMAND_LINE_ARGUMENTS + 1){
         std::printf("USAGE: %s <file_path> \n", argv[0]);
         return 0;
@@ -84,14 +83,12 @@ int main(int argc, char **argv){
     else{
         fileName = argv[1];
     }
-
     cv::VideoCapture capture(fileName);
     if(!capture.isOpened()){
         std::printf("Unable to open video source, terminating program! \n");
         return 0;
     }
     cv::namedWindow(DISPLAY_WINDOW_NAME, cv::WINDOW_NORMAL);
-    cv::namedWindow("fgMask", cv::WINDOW_NORMAL);
 
     const float bgThreshold = 125;
     const int captureWidth = static_cast<int>(capture.get(cv::CAP_PROP_FRAME_WIDTH));
@@ -105,12 +102,12 @@ int main(int argc, char **argv){
 
     cv::Ptr<cv::BackgroundSubtractor> pMOG2 = cv::createBackgroundSubtractorMOG2(bgHistory, bgThreshold, false);
     cv::Mat fgMask;
+    //  ROIs for lanes
     std::vector<cv::Rect> lanesWest;
     std::vector<cv::Rect> lanesEast;
-
-    // lanesWest.push_back(cv::Rect(cv::Point(0, 0), cv::Point(captureWidth, WEST_LANE1 - THIN)));
-    // lanesWest.push_back(cv::Rect(cv::Point(0, WEST_LANE1 + THIN), cv::Point(captureWidth, WEST_LANE2 - THIN)));
-    // lanesWest.push_back(cv::Rect(cv::Point(0, WEST_LANE2 + THIN), cv::Point(captureWidth, WEST_LANE3 - THIN)));
+    lanesWest.push_back(cv::Rect(cv::Point(0, 0), cv::Point(captureWidth, WEST_LANE1 - THIN)));
+    lanesWest.push_back(cv::Rect(cv::Point(0, WEST_LANE1 + THIN), cv::Point(captureWidth, WEST_LANE2 - THIN)));
+    lanesWest.push_back(cv::Rect(cv::Point(0, WEST_LANE2 + THIN), cv::Point(captureWidth, WEST_LANE3 - THIN)));
     lanesEast.push_back(cv::Rect(cv::Point(0, WEST_LANE3 + THIN), cv::Point(captureWidth, EAST_LANE1 - THIN)));
     lanesEast.push_back(cv::Rect(cv::Point(0, EAST_LANE1 + THIN), cv::Point(captureWidth, EAST_LANE2 - THIN)));
     lanesEast.push_back(cv::Rect(cv::Point(0, EAST_LANE2 + THIN), cv::Point(captureWidth, captureHeight - THIN)));
@@ -122,11 +119,11 @@ int main(int argc, char **argv){
         isMiddle[lane.br().y] = false;
     }
     
+    int iter = 0;
     while(doCapture){
         double startTicks = static_cast<double>(cv::getTickCount());
         cv::Mat captureFrame;
         cv::Mat grayFrame;
-
         std::vector<std::thread> threads;
 
         bool captureSuccess = capture.read(captureFrame);
@@ -134,19 +131,23 @@ int main(int argc, char **argv){
             cv::cvtColor(captureFrame, grayFrame, cv::COLOR_BGR2GRAY);
             cv::normalize(grayFrame, grayFrame, rangeMin, rangeMax, cv::NORM_MINMAX, CV_8UC1);
             pMOG2->apply(grayFrame, fgMask);
-
-            for(const auto& lane : lanesWest){
-                threads.push_back(std::thread([&](){
-                    monitorLane(captureFrame, fgMask(lane), lane);
-                }));
-            }
-            for(const auto& lane : lanesEast){
-                threads.push_back(std::thread([&](){
-                    monitorLane(captureFrame, fgMask(lane), lane);
-                }));
-            }
-            for(auto& thread : threads){
-                thread.join();
+            //  Capture some frames for background subtractor before counting
+            if(iter < 15){
+                iter++;
+            } else{
+                for(const auto& lane : lanesWest){
+                    threads.push_back(std::thread([&](){
+                        monitorLane(captureFrame, fgMask(lane), lane);
+                    }));
+                }
+                for(const auto& lane : lanesEast){
+                    threads.push_back(std::thread([&](){
+                        monitorLane(captureFrame, fgMask(lane), lane);
+                    }));
+                }
+                for(auto& thread : threads){
+                    thread.join();
+                }
             }
             frameCount++;
         }
@@ -156,14 +157,11 @@ int main(int argc, char **argv){
 
         if(captureSuccess){
             cv::imshow(DISPLAY_WINDOW_NAME, captureFrame);
-			cv::imshow("fgMask", fgMask);
             if(((char) cv::waitKey(1)) == 'q'){
                 doCapture = false;
             }
         }
-        double endTicks = static_cast<double>(cv::getTickCount());
-        double elapsedTime = (endTicks - startTicks) / cv::getTickFrequency();
-        // std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        std::cout << "WESTBOUND COUNT: " << westbound_count << "\n\n";
         std::cout << "EASTBOUND COUNT: " << eastbound_count << std::endl;
     }
     capture.release();
