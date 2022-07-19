@@ -9,28 +9,33 @@
 #define DISPLAY_WINDOW_NAME "Video Frame"
 
 #define WEST_LANE1 100
-#define WEST_LANE2 270
-#define WEST_LANE3 410
-#define EAST_LANE1 630
-#define EAST_LANE2 885
+#define WEST_LANE2 275
+#define WEST_LANE3 415
+#define EAST_LANE1 650
+#define EAST_LANE2 890
 
 static int westbound_count = 0;
 static int eastbound_count = 0;
 static std::mutex mu;
 
-//count cars and draw rects
-void monitorLane(cv::Mat& processedFrame, cv::Mat lane, cv::Rect rect, bool dirWest){
-    std::vector<std::vector<cv::Point> > contours;
+static cv::Mat kernel(5, 5, CV_8U);
+
+//  count cars and draw rects
+void monitorLane(cv::Mat& processedFrame, cv::Mat lane, cv::Rect rectLane, bool dirWest){
+    std::vector<std::vector<cv::Point>> contours;
     cv::findContours(lane, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
     std::vector<cv::Rect> fittedRects(contours.size());
+    //  filter rectangles that aren't close to fitting the lane
     for(int i = 0; i < contours.size(); i++){
-        if(contours.at(i).size() > 25){
+        if(contours.at(i).size() > 20){
             fittedRects[i] = cv::boundingRect(contours[i]);
-            fittedRects[i].y += rect.y;
-            
-            if(fittedRects[i].height < 100)
+            if(fittedRects[i].size().height < 0.6*rectLane.height){
                 continue;
+            }
+
+            fittedRects[i].y = rectLane.tl().y;
+            fittedRects[i].height = rectLane.height;
 
             mu.try_lock();
             cv::rectangle(
@@ -70,8 +75,8 @@ int main(int argc, char **argv){
 
     bool doCapture = true;
     int frameCount = 0;
-    const int bgHistory = 150;
-    const float bgThreshold = 75;
+    const int bgHistory = 250;
+    const float bgThreshold = 50;
 
     cv::Ptr<cv::BackgroundSubtractor> pMOG2 = cv::createBackgroundSubtractorMOG2(bgHistory, bgThreshold, false);
     cv::Mat fgMask;
@@ -99,23 +104,25 @@ int main(int argc, char **argv){
             const int rangeMax = 255;
 
             cv::cvtColor(captureFrame, grayFrame, cv::COLOR_BGR2GRAY);
-            // int delayMs = (1.0 / captureFPS) * 1000;
-            // std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));, cv::COLOR_BGR2GRAY);
             cv::normalize(grayFrame, grayFrame, rangeMin, rangeMax, cv::NORM_MINMAX, CV_8UC1);
+            // pMOG2->apply(captureFrame, fgMask);
             pMOG2->apply(grayFrame, fgMask);
-            cv::dilate(fgMask, fgMask, cv::Mat(), cv::Point(-1, -1), 50);
-            cv::erode(fgMask, fgMask, cv::Mat(), cv::Point(-1, -1), 50);
-
+            cv::dilate(fgMask, fgMask, kernel, cv::Point(-1, -1), 10);
             for(const auto& lane : lanesWest){
                 int y = lane.br().y;
                 cv::line(fgMask, cv::Point(0, y), cv::Point(captureWidth, y), cv::Scalar(0), 2);
+            }
+            for(const auto& lane : lanesEast){
+                int y = lane.br().y;
+                cv::line(fgMask, cv::Point(0, y), cv::Point(captureWidth, y), cv::Scalar(0), 2);
+            }
+            cv::erode(fgMask, fgMask, kernel, cv::Point(-1, -1), 5);
+            for(const auto& lane : lanesWest){
                 threads.push_back(std::thread([&](){
                     monitorLane(captureFrame, fgMask(lane), lane, true);
                 }));
             }
             for(const auto& lane : lanesEast){
-                int y = lane.br().y;
-                cv::line(fgMask, cv::Point(0, y), cv::Point(captureWidth, y), cv::Scalar(0), 2);
                 threads.push_back(std::thread([&](){
                     monitorLane(captureFrame, fgMask(lane), lane, false);
                 }));
