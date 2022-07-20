@@ -16,6 +16,7 @@
 #define MIDDLE 960
 
 #define THIN 40
+#define START_FRAME 10
 #define THRESH_HEIGHT 0.4
 #define MIN_AREA 8000
 #define MAX_AREA 120000
@@ -112,32 +113,31 @@ int main(int argc, char **argv){
     int frameCount = 0;
     bool doCapture = true;
     while(doCapture){
-        double startTicks = static_cast<double>(cv::getTickCount());
+        std::vector<std::thread> threads;
         cv::Mat captureFrame;
         cv::Mat grayFrame;
-        std::vector<std::thread> threads;
 
         bool captureSuccess = capture.read(captureFrame);
-        if(captureSuccess){
-            cv::cvtColor(captureFrame, grayFrame, cv::COLOR_BGR2GRAY);
-            cv::normalize(grayFrame, grayFrame, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-            pMOG2->apply(grayFrame, fgMask);
-            //  Capture some frames for background subtractor before counting
-            if(frameCount > 15){
-                for(const auto& lane : lanes){
-                    threads.push_back(std::thread([&](){
-                        monitorLane(captureFrame, fgMask(lane), lane);
-                    }));
-                }
-                for(auto& thread : threads){
-                    thread.join();
-                }
-            }
-            frameCount++;
-        }
-        else{
+        if(!captureSuccess){
             break;
         }
+
+        cv::cvtColor(captureFrame, grayFrame, cv::COLOR_BGR2GRAY);
+        cv::normalize(grayFrame, grayFrame, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+        pMOG2->apply(grayFrame, fgMask);
+        //  apply pMOG2 for a few frames for background before starting
+        if(frameCount > START_FRAME){
+            for(const auto& lane : lanes){
+                threads.push_back(std::thread([&](){
+                    monitorLane(captureFrame, fgMask(lane), lane);
+                }));
+            }
+            for(auto& thread : threads){
+                thread.join();
+            }
+        }
+        frameCount++;
+
         if(captureSuccess){
             cv::imshow(DISPLAY_WINDOW_NAME, captureFrame);
             if(((char) cv::waitKey(1)) == 'q'){
