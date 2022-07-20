@@ -15,10 +15,10 @@
 #define EAST_LANE2 890
 #define MIDDLE 960
 
-#define THIN 40
+#define THIN 45
 #define START_FRAME 10
 #define THRESH_HEIGHT 0.4
-#define MIN_AREA 8000
+#define MIN_AREA 5000
 #define MAX_AREA 120000
 
 static int westbound_count = 0;
@@ -111,11 +111,12 @@ int main(int argc, char **argv){
     
     int frameCount = 0;
     bool doCapture = true;
+    int prevCount = 0;
     while(doCapture){
         std::vector<std::thread> threads;
         cv::Mat captureFrame;
         cv::Mat grayFrame;
-
+        int currCount = 0;
         bool captureSuccess = capture.read(captureFrame);
         if(!captureSuccess){
             break;
@@ -134,6 +135,7 @@ int main(int argc, char **argv){
             for(auto& thread : threads){
                 thread.join();
             }
+            currCount = westbound_count + eastbound_count;
         }
         frameCount++;
 
@@ -144,8 +146,11 @@ int main(int argc, char **argv){
             }
         }
 
-        std::cout << "WESTBOUND COUNT: " << westbound_count << "\n";
-        std::cout << "EASTBOUND COUNT: " << eastbound_count << "\n\n";
+        if(currCount > prevCount){
+            std::cout << "WESTBOUND COUNT: " << westbound_count << "\n";
+            std::cout << "EASTBOUND COUNT: " << eastbound_count << "\n\n";
+        }
+        prevCount = currCount;
     }
     capture.release();
 }
