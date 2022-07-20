@@ -47,7 +47,6 @@ void monitorLane(cv::Mat& processedFrame, cv::Mat lane, cv::Rect rectLane){
                 continue;
             }
 
-            fittedRect.area();
             fittedRect.height = rectLane.height + 2*THIN;
             fittedRect.y = rectLane.tl().y - THIN;
             fittedRects.push_back(fittedRect);
