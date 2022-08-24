@@ -1,3 +1,4 @@
+//	this may not work if you plan on using it with OpenCV CUDA module
 #include <iostream>
 #include <cstdio>
 #include "opencv2/opencv.hpp"
